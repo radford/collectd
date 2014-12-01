@@ -543,7 +543,8 @@ static int cj_config_add_key (cj_t *db, /* {{{ */
   if (status == 0)
   {
     char *ptr;
-    char *name;
+    char prev = '\0';
+    int len = 0;
     char ent[PATH_MAX];
     c_avl_tree_t *tree;
 
@@ -551,24 +552,19 @@ static int cj_config_add_key (cj_t *db, /* {{{ */
       db->tree = cj_avl_create();
 
     tree = db->tree;
-    name = key->path;
     ptr = key->path;
     if (*ptr == '/')
       ++ptr;
 
-    name = ptr;
     while (*ptr)
     {
-      if (*ptr == '/')
+      if (prev != '\\' && *ptr == '/')
       {
         c_avl_tree_t *value;
-        int len;
 
-        len = ptr-name;
         if (len == 0)
           break;
-        len = COUCH_MIN(len, sizeof (ent)-1);
-        sstrncpy (ent, name, len+1);
+        ent[len] = '\0';
 
         if (c_avl_get (tree, ent, (void *) &value) != 0)
         {
@@ -577,12 +573,21 @@ static int cj_config_add_key (cj_t *db, /* {{{ */
         }
 
         tree = value;
-        name = ptr+1;
+        len = 0;
       }
-      ++ptr;
+      else if (prev == '\\' || *ptr != '\\')
+      {
+        if (len < sizeof(ent) - 1)
+          ent[len++] = *ptr;
+      }
+      prev = prev == '\\' ? '\0' : *ptr;
+      ptr++;
     }
-    if (*name)
-      c_avl_insert (tree, strdup(name), key);
+    if (len)
+    {
+      ent[len] = '\0';
+      c_avl_insert (tree, strdup(ent), key);
+    }
     else
     {
       ERROR ("curl_json plugin: invalid key: %s", key->path);
